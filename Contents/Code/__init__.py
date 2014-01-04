@@ -101,9 +101,10 @@ def AllShows():
 
     for show in l:
         oc.add(
-            DirectoryObject(
+            TVShowObject(
                 key=Callback(Show,Title=show.text.strip(),url=show.xpath('./@href')[0]),
-                title=show.text.strip()
+                title=show.text.strip(),
+                rating_key=show.text.strip()
             )
         )
 
@@ -139,11 +140,14 @@ def Show(Title=None, url=None):
 
     l.sort(xmlsort)
 
-    for season in l:
+    for i,season in enumerate(l):
         oc.add(
-            DirectoryObject(
-                key=Callback(Season,Title=Title,url=url,Season=season.text,idx=season.idx),
-                title=season.text
+            SeasonObject(
+                key=Callback(Season,Title=Title,url=url,Season=season.text,idx=season.idx,i=int(i+1)),
+                title=season.text,
+                show=Title,
+                index=int(i+1),
+                rating_key="%s_%s" % (Title,season.text)
             )
         )
 
@@ -153,7 +157,7 @@ def Show(Title=None, url=None):
 
 
 @route(VIDEO_PREFIX + '/show/season')
-def Season(Title=None,url=None,Season=None,idx=None):
+def Season(Title=None,url=None,Season=None,idx=None,i=None):
     if not Title:
         return MessageContainer('whoops', 'Something went wrong! Can\'t get this season')
 
@@ -162,38 +166,60 @@ def Season(Title=None,url=None,Season=None,idx=None):
     pg = HTML.ElementFromURL(url)
     episodes = pg.xpath("//div[@class='episodecontainer']//ul")[int(idx)]
     episodes = episodes.xpath('./li/a')
+    ep_idx=1
 
     for ep in episodes:
         oc.add(
-            DirectoryObject(
-                key=Callback(Episode,Title=Title,url=ep.xpath('./@href')[0],Season=Season,Episode="%s %s" % (ep.xpath('./strong/text()')[0],ep.xpath('./text()')[0])),
-                title="%s %s" % (ep.xpath('./strong/text()')[0],ep.xpath('./text()')[0])
+            EpisodeObject(
+                key=Callback(Episode,Title=Title,url=ep.xpath('./@href')[0],Season=Season,Episode="%s %s" % (ep.xpath('./strong/text()')[0],ep.xpath('./text()')[0]),i=i,ep_idx=ep_idx),
+                title="%s %s" % (ep.xpath('./strong/text()')[0],ep.xpath('./text()')[0]),
+                season=int(i),
+                show=Title,
+                index=ep_idx,
+                rating_key="%s_%s_%s" % (Title,Season,ep.xpath('./text()')[0])
             )
         )
+        ep_idx+=1
 
     return oc
     
 
 @route(VIDEO_PREFIX + '/show/episode')
-def Episode(Title=None,url=None,Season=None,Episode=None):
+def Episode(Title=None,url=None,Season=None,Episode=None,i=None,ep_idx=None):
     if not Title:
         return MessageContainer('whoops', 'Something went wrong! Can\'t get this episode')
 
-    oc = ObjectContainer(title2=Episode)
+    oc = ObjectContainer(title1=Title,title2=Episode)
 
     pg = HTML.ElementFromURL(url)
     buttons = pg.xpath("//div[@class='morevideos']//div[@class='buttoncontainer']")
 
+    ep = EpisodeObject(
+        #title="%s (%s)" % (button.xpath("./p[@class='vidtype']/text()")[0],re.sub(r'[^\d]+(\d+)$',r'\1',button.xpath("./a/text()")[0]))
+        title=Episode,
+        season=int(i),
+        show=Title,
+        index=int(ep_idx),
+        rating_key="%s_%s_%s" % (Title,Season,Episode),
+        key=Callback(Favs,url='sheep')
+    )
     for button in buttons:
-        oc.add(
-            DirectoryObject(
-                key=Callback(Favs),
-                title="%s (%s)" % (button.xpath("./p[@class='vidtype']/text()")[0],re.sub(r'[^\d]+(\d+)$',r'\1',button.xpath("./a/text()")[0]))
+        ep.add(
+            MediaObject(
+                parts = [
+                    PartObject(
+                        key=Callback(Favs,url='banana')
+                    )
+                ]
             )
         )
+
+    oc.add(ep)
     #pgstr = HTML.StringFromElement(pg)
 
     return oc
+
+
 
 # Part of the "search" example 
 # query will contain the string that the user entered
