@@ -179,21 +179,19 @@ def Episode(Title=None,url=None,Season=None,Episode=None):
     if not Title:
         return MessageContainer('whoops', 'Something went wrong! Can\'t get this episode')
 
-    oc = ObjectContainer(title2="%s %s %s" % (Title, Season, Episode))
-
-    return oc
+    oc = ObjectContainer(title2=Episode)
 
     pg = HTML.ElementFromURL(url)
-    episodes = pg.xpath("//div[@class='episodecontainer']//ul")[int(idx)]
-    episodes = episodes.xpath('./li/a')
+    buttons = pg.xpath("//div[@class='morevideos']//div[@class='buttoncontainer']")
 
-    for ep in episodes:
+    for button in buttons:
         oc.add(
             DirectoryObject(
                 key=Callback(Favs),
-                title="%s %s -- %s" % (ep.xpath('./strong/text()')[0],ep.xpath('./text()')[0], ep.xpath('./@href')[0])
+                title="%s (%s)" % (button.xpath("./p[@class='vidtype']/text()")[0],re.sub(r'[^\d]+(\d+)$',r'\1',button.xpath("./a/text()")[0]))
             )
         )
+    #pgstr = HTML.StringFromElement(pg)
 
     return oc
 
