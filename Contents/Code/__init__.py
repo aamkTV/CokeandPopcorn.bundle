@@ -1,3 +1,5 @@
+import re
+
 VIDEO_PREFIX = "/video/cokeandpopcorn"
 
 NAME = L('Title')
@@ -12,13 +14,23 @@ ICON = 'icon-default.png'
 
 def Start():
 
+    ObjectContainer.title1 = NAME
+    ObjectContainer.art = R(ART)
+
+    DirectoryObject.thumb = R(ICON)
+    DirectoryObject.art = R(ART)
+    EpisodeObject.thumb = R(ICON)
+    EpisodeObject.art = R(ART)
+    VideoClipObject.thumb = R(ICON)
+    VideoClipObject.art = R(ART)
+
     ## make this plugin show up in the 'Video' section
     ## in Plex. The L() function pulls the string out of the strings
     ## file in the Contents/Strings/ folder in the bundle
     ## see also:
     ##  http://dev.plexapp.com/docs/mod_Plugin.html
     ##  http://dev.plexapp.com/docs/Bundle.html#the-strings-directory
-    Plugin.AddPrefixHandler(VIDEO_PREFIX, VideoMainMenu, NAME, ICON, ART)
+    """Plugin.AddPrefixHandler(VIDEO_PREFIX, MainMenu, NAME, ICON, ART)
 
     Plugin.AddViewGroup("InfoList", viewMode="InfoList", mediaType="items")
     Plugin.AddViewGroup("List", viewMode="List", mediaType="items")
@@ -32,17 +44,12 @@ def Start():
     MediaContainer.viewGroup = "List"
     MediaContainer.art = R(ART)
     DirectoryItem.thumb = R(ICON)
-    VideoItem.thumb = R(ICON)
+    VideoItem.thumb = R(ICON)"""
     
-    HTTP.CacheTime = CACHE_1HOUR
+    HTTP.CacheTime = 0#CACHE_1HOUR
 
 
-
-#### the rest of these are user created functions and
-#### are not reserved by the plugin framework.
-#### see: http://dev.plexapp.com/docs/Functions.html for
-#### a list of reserved functions above
-
+@handler(VIDEO_PREFIX, NAME, art=ART, thumb=ICON)
 
 
 #
@@ -50,75 +57,145 @@ def Start():
 # for the 'Video' prefix handler
 #
 
-def VideoMainMenu():
+def MainMenu():
+    oc = ObjectContainer()
 
-    # Container acting sort of like a folder on
-    # a file system containing other things like
-    # "sub-folders", videos, music, etc
-    # see:
-    #  http://dev.plexapp.com/docs/Objects.html#MediaContainer
-    dir = MediaContainer(viewGroup="InfoList")
+    oc.add(
+        DirectoryObject(
+            key=Callback(AllShows),
+            title="All Shows"
+        )
+    )
+    oc.add(
+        DirectoryObject(
+            key=Callback(Favs),
+            title="Favorites"
+        )
+    )
+
+    return oc
 
 
-    # see:
-    #  http://dev.plexapp.com/docs/Objects.html#DirectoryItem
-    #  http://dev.plexapp.com/docs/Objects.html#function-objects
-    dir.Append(
-        Function(
-            DirectoryItem(
-                CallbackExample,
-                "directory item title",
-                subtitle="subtitle",
-                summary="clicking on me will call CallbackExample",
-                thumb=R(ICON),
-                art=R(ART)
+def xmlsort(a,b):
+    return cmp(a.text.strip(),b.text.strip())
+
+
+@route(VIDEO_PREFIX + '/all-shows')
+def AllShows():
+    oc = ObjectContainer(title2='All the shows')
+
+    pg = HTML.ElementFromURL("http://www.cokeandpopcorn.ch/tvsection.php")
+    shows = pg.xpath("//div[@class='tabcontents']//div[@class='lister']//a")
+    l = []
+
+    discard = re.compile('^(where can i watch|watch series\?)',re.I)
+
+    for show in shows:
+        if discard.match(show.text):
+            Log('WOOP WOOP WE HAVE A MATCH: %s' % show.text)
+            continue
+        l.append(show)
+
+
+    l.sort(xmlsort)
+
+    for show in l:
+        oc.add(
+            DirectoryObject(
+                key=Callback(Show,Title=show.text.strip(),url=show.xpath('./@href')[0]),
+                title=show.text.strip()
             )
         )
-    )
-  
-    # Part of the "search" example 
-    # see also:
-    #   http://dev.plexapp.com/docs/Objects.html#InputDirectoryItem
-    dir.Append(
-        Function(
-            InputDirectoryItem(
-                SearchResults,
-                "Search title",
-                "Search subtitle",
-                summary="This lets you search stuff",
-                thumb=R(ICON),
-                art=R(ART)
+
+    if len(oc) < 1:
+        return ObjectContainer(header='Empty',message="Unable to fetch shows right now.")
+
+    return oc
+
+@route(VIDEO_PREFIX + '/favorites')
+def Favs(url=None):
+    if url:
+        return MessageContainer('mm', 'got video: %s' % url)
+    else:
+        return MessageContainer("no", "kbyeee")
+
+@route(VIDEO_PREFIX + '/show')
+def Show(Title=None, url=None):
+    if not Title:
+        return MessageContainer('whoops', 'Something went wrong!')
+
+    oc = ObjectContainer(title2=Title)
+
+    pg = HTML.ElementFromURL(url)
+    seasonHeadings = pg.xpath("//div[@class='episodecontainer']//h3//a")
+    #seasons = pg.xpath("//div[@class='episodecontainer']//ul")
+    idx=0
+    l = []
+
+    for season in seasonHeadings:
+        season.idx=idx
+        idx+=1
+        l.append(season)
+
+    l.sort(xmlsort)
+
+    for season in l:
+        oc.add(
+            DirectoryObject(
+                key=Callback(Season,Title=Title,url=url,Season=season.text,idx=season.idx),
+                title=season.text
             )
         )
-    )
 
-  
-    # Part of the "preferences" example 
-    # see also:
-    #  http://dev.plexapp.com/docs/Objects.html#PrefsItem
-    #  http://dev.plexapp.com/docs/Functions.html#CreatePrefs
-    #  http://dev.plexapp.com/docs/Functions.html#ValidatePrefs 
-    dir.Append(
-        PrefsItem(
-            title="Your preferences",
-            subtile="So you can set preferences",
-            summary="lets you set preferences",
-            thumb=R(ICON)
+    return oc
+
+
+
+
+@route(VIDEO_PREFIX + '/show/season')
+def Season(Title=None,url=None,Season=None,idx=None):
+    if not Title:
+        return MessageContainer('whoops', 'Something went wrong! Can\'t get this season')
+
+    oc = ObjectContainer(title2="%s %s" % (Title, Season))
+
+    pg = HTML.ElementFromURL(url)
+    episodes = pg.xpath("//div[@class='episodecontainer']//ul")[int(idx)]
+    episodes = episodes.xpath('./li/a')
+
+    for ep in episodes:
+        oc.add(
+            DirectoryObject(
+                key=Callback(Episode,Title=Title,url=ep.xpath('./@href')[0],Season=Season,Episode="%s %s" % (ep.xpath('./strong/text()')[0],ep.xpath('./text()')[0])),
+                title="%s %s" % (ep.xpath('./strong/text()')[0],ep.xpath('./text()')[0])
+            )
         )
-    )
 
-    # ... and then return the container
-    return dir
+    return oc
+    
 
-def CallbackExample(sender):
+@route(VIDEO_PREFIX + '/show/episode')
+def Episode(Title=None,url=None,Season=None,Episode=None):
+    if not Title:
+        return MessageContainer('whoops', 'Something went wrong! Can\'t get this episode')
 
-    ## you might want to try making me return a MediaContainer
-    ## containing a list of DirectoryItems to see what happens =)
+    oc = ObjectContainer(title2="%s %s %s" % (Title, Season, Episode))
 
-    return MessageContainer(
-        "Not implemented",
-        "In real life, you'll make more than one callback,\nand you'll do something useful.\nsender.itemTitle=%s" % sender.itemTitle
-    )
+    return oc
+
+    pg = HTML.ElementFromURL(url)
+    episodes = pg.xpath("//div[@class='episodecontainer']//ul")[int(idx)]
+    episodes = episodes.xpath('./li/a')
+
+    for ep in episodes:
+        oc.add(
+            DirectoryObject(
+                key=Callback(Favs),
+                title="%s %s -- %s" % (ep.xpath('./strong/text()')[0],ep.xpath('./text()')[0], ep.xpath('./@href')[0])
+            )
+        )
+
+    return oc
 
 # Part of the "search" example 
 # query will contain the string that the user entered
