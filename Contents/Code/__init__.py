@@ -88,10 +88,10 @@ def AllShows():
     shows = pg.xpath("//div[@class='tabcontents']//div[@class='lister']//a")
     l = []
 
-    discard = re.compile('^(where can i watch|watch series\?)',re.I)
+    discard = re.compile(r'(where can i watch|watch series\?)',re.I)
 
     for show in shows:
-        if discard.match(show.text):
+        if discard.search(show.text):
             Log('WOOP WOOP WE HAVE A MATCH: %s' % show.text)
             continue
         l.append(show)
