@@ -32,18 +32,6 @@
     <key>PlexPluginDebug</key>
     <string>1</string>
 
-
-     <!-- from plex example code -->
-     <!--<key>PlexURLServices</key>
-     <dict>
-             <key>Apple Movie Trailers</key>
-             <dict>
-                     <key>URLPattern</key>
-                <string>http://.*apple\.com/.*</string>
-                <key>Identifier</key>
-                <string>com.plexapp.plugins.amt</string>
-             </dict>
-     </dict>-->
      <!--<key>PlexAudioCodec</key>
      <array>
              <string>AAC</string>
