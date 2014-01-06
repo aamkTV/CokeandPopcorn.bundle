@@ -46,7 +46,7 @@ def Start():
     DirectoryItem.thumb = R(ICON)
     VideoItem.thumb = R(ICON)"""
     
-    HTTP.CacheTime = 0#CACHE_1HOUR
+    HTTP.CacheTime = CACHE_1HOUR
 
 
 @handler(VIDEO_PREFIX, NAME, art=ART, thumb=ICON)
