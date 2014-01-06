@@ -1,0 +1,222 @@
+import re
+import string
+
+
+def unpack(source):
+    """Unpacks P.A.C.K.E.R. packed js code."""
+    packedReg = re.compile(r"}\('(.*)', *(\d+), *(\d+), *'(.*)'\.split\('\|'\)", re.S)
+
+    try:
+        args = packedReg.search(source).groups()
+    except AttributeError:
+        raise Exception("could not find packed code")
+    payload, symtab, radix, count = args[0], args[3].split('|'), int(args[1]), int(args[2])
+
+
+    if count != len(symtab):
+        raise Exception('Malformed p.a.c.k.e.r. symtab.')
+
+    try:
+        unbase = Unbaser(radix)
+    except TypeError:
+        raise Exception('Unknown p.a.c.k.e.r. encoding.')
+
+    def lookup(match):
+        """Look up symbols in the synthetic symtab."""
+        word  = match.group(0)
+        return symtab[unbase(word)] or word
+
+    source = re.sub(r'\b\w+\b', lookup, payload)
+    return replacestrings(source)
+
+
+def replacestrings(source):
+    """Strip string lookup table (list) and replace values in source."""
+    match = re.search(r'var *(_\w+)\=\["(.*?)"\];', source, re.DOTALL)
+
+    if match:
+        varname, strings = match.groups()
+        startpoint = len(match.group(0))
+        lookup = strings.split('","')
+        variable = '%s[%%d]' % varname
+        for index, value in enumerate(lookup):
+            source = source.replace(variable % index, '"%s"' % value)
+        return source[startpoint:]
+    return source
+
+
+class Unbaser(object):
+    """Functor for a given base. Will efficiently convert
+    strings to natural numbers."""
+    ALPHABET  = {
+        62 : '0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ',
+        95 : (' !"#$%&\'()*+,-./0123456789:;<=>?@ABCDEFGHIJKLMNOPQRSTUVWXYZ'
+              '[\]^_`abcdefghijklmnopqrstuvwxyz{|}~')
+    }
+
+    def __init__(self, base):
+        self.base = base
+
+        # If base can be handled by int() builtin, let it do it for us
+        if 2 <= base <= 36:
+            self.unbase = lambda string: int(string, base)
+        else:
+            # Build conversion dictionary cache
+            try:
+                self.dictionary = dict((cipher, index) for
+                    index, cipher in enumerate(self.ALPHABET[base]))
+            except KeyError:
+                raise TypeError('Unsupported base encoding.')
+
+            self.unbase = self.dictunbaser
+
+    def __call__(self, string):
+        return self.unbase(string)
+
+    def dictunbaser(self, string):
+        """Decodes a  value to an integer."""
+        ret = 0
+        for index, cipher in enumerate(string[::-1]):
+            ret += (self.base ** index) * self.dictionary[cipher]
+        return ret
+
+
+
+def NormalizeURL(url):
+	return url
+
+def MetadataObjectForURL(url):
+	return EpisodeObject(
+		title = "Bananaphone",
+		summary = "Lorem ipsum dolor sit amet, consectetur adipisicing elit. Ipsam, rerum voluptatibus asperiores eaque aut in optio minus molestias saepe sapiente. Voluptas, voluptate eos alias recusandae beatae eligendi eveniet rem. Vitae!"
+	)
+
+
+def MediaObjectsForURL(url):
+	
+
+	urlmatch = re.compile(r'episode',re.I)
+
+	if urlmatch.search(url):
+
+		keyreg = re.compile(r'return\.php.*hash\:\s+"([^"]+)".*episodehash\:\s+"([^"]+)"',re.I)
+		vidboxreg = re.compile(r'case\s+(\d+)\:\s+\$\(\"\#videobox\"\)\.html\(\"(.*?)\"\);?break;',re.I)
+		iframereg = re.compile(r'iframe[^>]+src=\\?\"([^\\\"]+)\\?\"',re.I)
+
+		#provider-specific regexes
+		isharedReg = re.compile(r'path:"([^"]+)"',re.I)
+		vidbullPackReg = re.compile(r'(eval\(\s*function\s*\(\s*p\s*,\s*a\s*,.*?)\<\/script\>', re.I | re.S)
+		vidbullReg = re.compile(r'{\s*file\s*:\s*"([^"]+)"',re.I)
+		vk2Reg = re.compile(r'file\s*:\s*"(([^"]+)\.(mp4|flv))"',re.I)
+
+		#generic flash sniffing
+		GenericParamReg = re.compile(r'name="flashvars"\s+value=["\']([^"\']+)["\']',re.I)
+		GenericSrcReg = re.compile(r'file(=|%22:%22)([^&]+)',re.I)
+
+
+		pg = HTML.ElementFromURL(url)
+		buttons = pg.xpath("//div[@class='morevideos']//div[@class='buttoncontainer']")
+		pgstr = HTML.StringFromElement(pg)
+		keys = keyreg.search(pgstr)
+		ret = HTTP.Request('http://www.cokeandpopcorn.ch/js/return.php',values={'hash':keys.group(1),'episodeHash':keys.group(2)})
+		boxes = vidboxreg.findall(ret.content)
+		g = {}
+		m = []
+		for box in boxes:
+			try:
+				g[box[0]]=iframereg.search(box[1]).group(1)
+			except:
+				Log('shit hit the fan on #%s' % box[0])
+				Log(box[1])
+				g[box[0]]=False
+
+		for button in buttons:
+			service = button.xpath("./p[@class='vidtype']/text()")[0]
+			number = re.sub(r'[^\d]+(\d+)$',r'\1',button.xpath("./a/text()")[0])
+
+			if g[number] == False:
+				continue
+
+			Log('service %s; choice #%s: %s' % (service,number,g[number]))
+
+			#skip
+			if service in ['vidup','vidup (IPAD)','iphone or pc','ALL Devices']:
+				Log('skipping')
+				continue
+
+			embed = HTTP.Request(g[number])
+			srch = False
+			src = False
+
+			if service == 'ishared':
+				srch = isharedReg.search(embed.content)
+				if srch:
+					src = srch.group(1)
+			elif service == 'vidbull':
+				Log('custom vidbull searching')
+				srch = vidbullPackReg.findall(embed.content)
+				Log('found %s packed codes from vidbull' % len(srch))
+				for packed in srch:
+					t = unpack(packed)
+					p = vidbullReg.search(t)
+					if p:
+						src = p.group(1)
+			elif service == 'VK-2':
+				Log('custom VK2 search')
+				srch = vidbullPackReg.findall(embed.content)
+				Log('Found %s packed codes from VK2' % len(srch))
+				for packed in srch:
+					t = unpack(packed)
+					p = vk2Reg.search(t)
+					if p:
+						src = p.group(1)
+
+
+			else:
+				param = GenericParamReg.search(embed.content)
+
+				if param:
+					Log('got flash param for #%s: %s' % (number, param.group(0)))
+					src = GenericSrcReg.search(param.group(1))
+					if src:
+						src = String.Unquote(src.group(2))
+						Log('got generic flash source! %s' % src)
+					else:
+						Log('couldnt get src from generic param')
+				else:
+					Log('no flash vars for #%s, %s' % (number,service))
+
+
+			if src:
+				Log('have src!')
+				m.append(MediaObject(
+					video_codec = VideoCodec.H264,
+					audio_codec = AudioCodec.AAC,
+					#container = Container.MP4,
+					parts = [
+						PartObject(
+							key = Callback(PV, url=src)
+						)
+					]
+				))
+
+		return m
+	else:
+		return [
+			MediaObject(
+				video_codec = VideoCodec.H264,
+				audio_codec = AudioCodec.AAC,
+				container = Container.MP4,
+				parts = [
+					PartObject(
+						key = Callback(PV, url=url)
+					)
+				]
+			)
+		]
+
+
+@indirect
+def PV(url):
+	Log('bacon: %s' % url)
+	return IndirectResponse(EpisodeObject, key=url)

@@ -75,38 +75,30 @@ def MainMenu():
 
     return oc
 
-
-def xmlsort(a,b):
-    return cmp(a.text.strip(),b.text.strip())
-
-
 @route(VIDEO_PREFIX + '/all-shows')
 def AllShows():
     oc = ObjectContainer(title2='All the shows')
 
     pg = HTML.ElementFromURL("http://www.cokeandpopcorn.ch/tvsection.php")
     shows = pg.xpath("//div[@class='tabcontents']//div[@class='lister']//a")
-    l = []
 
     discard = re.compile(r'(where can i watch|watch series\?)',re.I)
+
 
     for show in shows:
         if discard.search(show.text):
             Log('WOOP WOOP WE HAVE A MATCH: %s' % show.text)
             continue
-        l.append(show)
-
-
-    l.sort(xmlsort)
-
-    for show in l:
         oc.add(
             TVShowObject(
+                url=show.xpath('./@href')[0],
                 key=Callback(Show,Title=show.text.strip(),url=show.xpath('./@href')[0]),
                 title=show.text.strip(),
-                rating_key=show.text.strip()
+                #rating_key=show.text.strip()
             )
         )
+
+    oc.objects.sort(key = lambda obj: obj.title)
 
     if len(oc) < 1:
         return ObjectContainer(header='Empty',message="Unable to fetch shows right now.")
@@ -129,28 +121,25 @@ def Show(Title=None, url=None):
 
     pg = HTML.ElementFromURL(url)
     seasonHeadings = pg.xpath("//div[@class='episodecontainer']//h3//a")
+    seasonNumReg = re.compile(r'(\d+)$',re.I)
     #seasons = pg.xpath("//div[@class='episodecontainer']//ul")
     idx=0
-    l = []
 
     for season in seasonHeadings:
-        season.idx=idx
-        idx+=1
-        l.append(season)
-
-    l.sort(xmlsort)
-
-    for i,season in enumerate(l):
+        num = int(seasonNumReg.search(season.text).group(1))
         oc.add(
             SeasonObject(
-                key=Callback(Season,Title=Title,url=url,Season=season.text,idx=season.idx,i=int(i+1)),
+                key=Callback(Season,Title=Title,url=url,Season=season.text,idx=idx,i=num),
+                url=season.xpath('./@href')[0],
                 title=season.text,
                 show=Title,
-                index=int(i+1),
-                rating_key="%s_%s" % (Title,season.text)
+                index=num,
+                #rating_key="%s_%s" % (Title,season.text)
             )
         )
+        idx+=1
 
+    oc.objects.sort(key = lambda obj: obj.title)
     return oc
 
 
@@ -169,54 +158,30 @@ def Season(Title=None,url=None,Season=None,idx=None,i=None):
     ep_idx=1
 
     for ep in episodes:
+        ep_url=ep.xpath('./@href')[0]
         oc.add(
             EpisodeObject(
-                key=Callback(Episode,Title=Title,url=ep.xpath('./@href')[0],Season=Season,Episode="%s %s" % (ep.xpath('./strong/text()')[0],ep.xpath('./text()')[0]),i=i,ep_idx=ep_idx),
+                key=Callback(Episode,Title=Title,url=ep_url,Season=Season,Episode="%s %s" % (ep.xpath('./strong/text()')[0],ep.xpath('./text()')[0]),i=i,ep_idx=ep_idx),
                 title="%s %s" % (ep.xpath('./strong/text()')[0],ep.xpath('./text()')[0]),
-                season=int(i),
-                show=Title,
-                index=ep_idx,
-                rating_key="%s_%s_%s" % (Title,Season,ep.xpath('./text()')[0])
+                #season=int(i),
+                #show=Title,
+                #index=ep_idx,
+                #url=ep_url,
+                rating_key=ep_url
             )
         )
         ep_idx+=1
 
     return oc
-    
 
 @route(VIDEO_PREFIX + '/show/episode')
 def Episode(Title=None,url=None,Season=None,Episode=None,i=None,ep_idx=None):
-    if not Title:
-        return MessageContainer('whoops', 'Something went wrong! Can\'t get this episode')
-
-    oc = ObjectContainer(title1=Title,title2=Episode)
-
-    pg = HTML.ElementFromURL(url)
-    buttons = pg.xpath("//div[@class='morevideos']//div[@class='buttoncontainer']")
-
-    ep = EpisodeObject(
-        #title="%s (%s)" % (button.xpath("./p[@class='vidtype']/text()")[0],re.sub(r'[^\d]+(\d+)$',r'\1',button.xpath("./a/text()")[0]))
-        title=Episode,
-        season=int(i),
-        show=Title,
-        index=int(ep_idx),
-        rating_key="%s_%s_%s" % (Title,Season,Episode),
-        key=Callback(Favs,url='sheep')
-    )
-    for button in buttons:
-        ep.add(
-            MediaObject(
-                parts = [
-                    PartObject(
-                        key=Callback(Favs,url='banana')
-                    )
-                ]
-            )
+    oc = ObjectContainer(title2="%s" % Title)
+    oc.add(
+        EpisodeObject(
+            url=url
         )
-
-    oc.add(ep)
-    #pgstr = HTML.StringFromElement(pg)
-
+    )
     return oc
 
 
